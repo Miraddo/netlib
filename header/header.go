@@ -1,5 +1,6 @@
 package header
 
+// type Packet []byte
 type Packet struct {
 	Header []byte
 	data   string

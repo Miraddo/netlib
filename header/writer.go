@@ -7,8 +7,11 @@ import (
 )
 
 func (w *Writer) Build() []byte {
-	result := make([]byte, 20)
-	result = append(result, []byte(strconv.FormatInt(int64(w.SourcePort), 16))...)
+	var result []byte
+
+	sp, err := strconv.Atoi(fmt.Sprintf("%x", w.SourcePort))
+
+	result = append(result, byte(sp))
 	result = append(result, []byte(strconv.FormatInt(int64(w.DestinationPort), 16))...)
 	result = append(result, []byte(strconv.FormatInt(int64(w.SequenceNumber), 16))...)
 	result = append(result, []byte(strconv.FormatInt(int64(w.AckNumber), 16))...)
