@@ -3,13 +3,11 @@ package header
 
 import (
 	"encoding/binary"
-	
 )
 
 // SourcePort Source TCP port number (2 bytes or 16 bits):
 // The source TCP port number represents the sending device.
 func (p Packet) SourcePort() uint16 {
-	
 	return binary.BigEndian.Uint16(p[0:2])
 }
 
@@ -45,60 +43,62 @@ func (p Packet) DO() uint8 {
 // This field aligns the total header size as a multiple of four bytes,
 // which is important for the efficiency of computer data processing.
 func (p Packet) RSV() uint8 {
-	return uint8(binary.BigEndian.Uint16(p[12:14])<<4) >> 9
+	return uint8(uint16(binary.BigEndian.Uint16(p[12:14])<<4) >> 13)
 }
 
 // Flags Control flags (up to 9 bits): TCP uses a set of six standard and
 // three extended control flags—each an individual bit representing On or Off—to manage
 // data flow in specific situations.
-// func (p *Packet) Flags() struct {
-// 	SYN bool
-// 	ACK bool
-// 	RST bool
-// 	FIN bool
-// 	PSH bool
-// 	URG bool
-// } {
+func (p Packet) Flags() (flags struct {
+	NS  bool
+	CWR bool
+	ECE bool
+	URG bool
+	ACK bool
+	PSH bool
+	RST bool
+	SYN bool
+	FIN bool
+}) {
 
-// 	var flags struct {
-// 		SYN bool
-// 		ACK bool
-// 		RST bool
-// 		FIN bool
-// 		PSH bool
-// 		URG bool
-// 	}
+	if uint16(binary.BigEndian.Uint16(p[12:14])<<7)>>15 == 1 {
+		flags.NS = true
+	}
 
-// 	syn := fmt.Sprintf("%b", s1)[4]
+	if uint16(binary.BigEndian.Uint16(p[12:14])<<8)>>15 == 1 {
+		flags.CWR = true
+	}
 
-// 	if syn == 1 {
-// 		fg.SYN = true
-// 	}
+	if uint16(binary.BigEndian.Uint16(p[12:14])<<9)>>15 == 1 {
+		flags.ECE = true
+	}
 
-// 	data := fmt.Sprintf("%b", s2)
+	if uint16(binary.BigEndian.Uint16(p[12:14])<<10)>>15 == 1 {
+		flags.URG = true
+	}
 
-// 	if data[0] == 1 {
-// 		fg.ACK = true
-// 	}
+	if uint16(binary.BigEndian.Uint16(p[12:14])<<11)>>15 == 1 {
+		flags.ACK = true
+	}
 
-// 	if data[1] == 1 {
-// 		fg.RST = true
-// 	}
+	if uint16(binary.BigEndian.Uint16(p[12:14])<<12)>>15 == 1 {
+		flags.PSH = true
+	}
 
-// 	if data[2] == 1 {
-// 		fg.FIN = true
-// 	}
+	if uint16(binary.BigEndian.Uint16(p[12:14])<<13)>>15 == 1 {
+		flags.RST = true
+	}
 
-// 	if data[3] == 1 {
-// 		fg.PSH = true
-// 	}
+	if uint16(binary.BigEndian.Uint16(p[12:14])<<14)>>15 == 1 {
+		flags.SYN = true
+	}
 
-// 	if data[4] == 1 {
-// 		fg.URG = true
-// 	}
+	if uint16(binary.BigEndian.Uint16(p[12:14])<<15)>>15 == 1 {
+		flags.FIN = true
+	}
 
-// 	return flags
-// }
+	return flags
+}
 
 // Window Window size (2 bytes or 16 bits): TCP senders use a number,
 // called window size, to regulate how much data they send to a receiver before
@@ -125,12 +125,11 @@ func (p Packet) Checksum() uint16 {
 // flags, it can be used as a data offset to mark a subset of a message as
 // requiring priority processing.
 func (p Packet) UrgentPointer() uint16 {
-
 	return binary.BigEndian.Uint16(p[18:20])
 }
 
-// // Options TCP optional data (0 to 40 bytes): Usages of optional TCP data
-// // include support for special acknowledgment and window scaling algorithms.
+// Options TCP optional data (0 to 40 bytes): Usages of optional TCP data
+// include support for special acknowledgment and window scaling algorithms.
 // func (p *Packet) Options() {
 // 	fmt.Println("Options")
 // }
