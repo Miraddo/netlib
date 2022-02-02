@@ -1,8 +1,6 @@
-package header
-
+package tcp
 
 type Packet []byte
-
 
 type Writer struct {
 	SourcePort      uint16

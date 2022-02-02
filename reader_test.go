@@ -1,4 +1,4 @@
-package header
+package tcp
 
 import (
 	"testing"
@@ -29,7 +29,7 @@ func TestReader(t *testing.T) {
 
 		var expected uint16 = 46926
 
-		res := p.SourcePort()
+		res := p.GetSourcePort()
 
 		if res != expected {
 			t.Fatalf("\t%s\tExpected %d, but got %d", failed, expected, res)
@@ -41,34 +41,32 @@ func TestReader(t *testing.T) {
 }
 
 func BenchmarkReader(b *testing.B) {
-	p := Packet{
+	// p := Packet{
 
-		0xb7, 0x4e,
-		0x01, 0xbb,
-		0xb1, 0x46,
-		0xa4, 0x61,
-		0x00, 0x00,
-		0x00, 0x00,
-		0xa0, 0x02,
-		0xfa, 0xf0,
-		0x9b, 0xba,
-		0x00, 0x00,
-	}
+	// 	0xb7, 0x4e,
+	// 	0x01, 0xbb,
+	// 	0xb1, 0x46,
+	// 	0xa4, 0x61,
+	// 	0x00, 0x00,
+	// 	0x00, 0x00,
+	// 	0xa0, 0x02,
+	// 	0xfa, 0xf0,
+	// 	0x9b, 0xba,
+	// 	0x00, 0x00,
+	// }
 
-	for n := 0; n < b.N; n++ {
+	// for n := 0; n < b.N; n++ {
 
-		p.SourcePort()
-		p.DestinationPort()
-		p.SequenceNumber()
-		p.AckNumber()
-		p.DO()
-		p.RSV()
-		p.RSV()
-		p.Flags()
-		p.Window()
-		p.Checksum()
-		p.UrgentPointer()
+	// 	// p.GetSourcePort()
+	// 	// p.GetDestinationPort()
 
-	}
+	// 	// p.RSV()
+	// 	// p.RSV()
+
+	// 	// p.Window()
+	// 	// p.Checksum()
+	// 	// p.UrgentPointer()
+
+	// }
 
 }
