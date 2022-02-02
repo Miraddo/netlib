@@ -7,6 +7,7 @@ import (
 )
 
 func (w *Writer) Build() []byte {
+
 	var result []byte
 
 	sp, err := strconv.Atoi(fmt.Sprintf("%x", w.SourcePort))
