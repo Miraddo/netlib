@@ -1,79 +1,51 @@
 package tcp
 
-import (
-	"fmt"
-	"log"
-	"strconv"
-)
+import "encoding/binary"
 
-func (w *Writer) Build() []byte {
+func (p Packet) SetSourcePort(port uint16) {
+	binary.BigEndian.PutUint16(p[0:], port)
+}
 
-	var result []byte
+func (p Packet) SetDestinationPort(port uint16) {
+	binary.BigEndian.PutUint16(p[2:], port)
+}
 
-	sp, err := strconv.Atoi(fmt.Sprintf("%x", w.SourcePort))
+func (p Packet) SetSequenceNumber(v uint32) {
+	binary.BigEndian.PutUint32(p[4:], v)
+}
 
-	result = append(result, byte(sp))
-	result = append(result, []byte(strconv.FormatInt(int64(w.DestinationPort), 16))...)
-	result = append(result, []byte(strconv.FormatInt(int64(w.SequenceNumber), 16))...)
-	result = append(result, []byte(strconv.FormatInt(int64(w.AckNumber), 16))...)
-	bits := fmt.Sprintf("%b", w.DataOffset)
-	bits = bits + fmt.Sprintf("%b", w.ReservedData)
+func (p Packet) SetAckNumber(v uint32) {
+	binary.BigEndian.PutUint32(p[8:], v)
+}
 
-	switch {
-	case !w.Flags.SYN:
-		bits = bits + "0"
+func (p Packet) SetDataOffset(v uint8) {
+	p[12] = byte((v/4)<<4) | p[12]
+}
 
-	default:
-		bits = bits + "1"
-	}
+func (p Packet) SetFlagPartOne(flags byte) {
+	p[12] = p[12] | flags
+}
 
-	switch {
-	case !w.Flags.ACK:
-		bits = bits + "0"
+func (p Packet) SetFlagPartTwo(flags byte) {
+	p[13] = flags
+}
 
-	default:
-		bits = bits + "1"
-	}
+func (p Packet) SetWindow(v uint16) {
+	binary.BigEndian.PutUint16(p[14:], v)
+}
 
-	switch {
-	case !w.Flags.RST:
-		bits = bits + "0"
+func (p Packet) SetChecksum(v uint16) {
+	binary.BigEndian.PutUint16(p[16:], v)
+}
 
-	default:
-		bits = bits + "1"
-	}
+func (p Packet) SetUrgentPointer(v uint16) {
+	binary.BigEndian.PutUint16(p[18:], v)
+}
 
-	switch {
-	case !w.Flags.FIN:
-		bits = bits + "0"
+func (p Packet) SetOptions(o []byte) {
+	copy(p[20:], o)
+}
 
-	default:
-		bits = bits + "1"
-	}
-
-	switch {
-	case !w.Flags.PSH:
-		bits = bits + "0"
-
-	default:
-		bits = bits + "1"
-	}
-
-	switch {
-	case !w.Flags.URG:
-		bits = bits + "0"
-
-	default:
-		bits = bits + "1"
-	}
-	fg, err := strconv.Atoi(bits)
-	if err != nil {
-		log.Fatalf("got an error %v", err)
-	}
-	result = append(result, []byte(strconv.FormatInt(int64(fg), 16))...)
-	result = append(result, []byte(strconv.FormatInt(int64(w.Window), 16))...)
-	result = append(result, []byte(strconv.FormatInt(int64(w.Checksum), 16))...)
-	result = append(result, []byte(strconv.FormatInt(int64(w.UrgentPointer), 16))...)
-
-	return result
+func (p Packet) SetPayload(payload []byte) {
+	copy(p[p.DataOffset():], payload)
 }
