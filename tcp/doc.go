@@ -1,4 +1,4 @@
-package tcp
+// For license and copyright information please see LEGAL file in repository
 
 // resources:
 // https://en.wikipedia.org/wiki/Transmission_Control_Protocol
@@ -31,3 +31,5 @@ package tcp
 //	This is only sent in the initial connection request.
 // + Payload The TCP header padding is used to ensure that the TCP header ends,
 //	and data begins, on a 32-bit boundary. The padding is composed of zeros.
+
+package tcp
