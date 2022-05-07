@@ -6,9 +6,18 @@ func (o Options) HasNext() bool {
 	return len(o) > 0
 }
 
-//func (o Options) Next() (opt Option, remain Options) {
-//
-//}
+func (o Options) Next() (opt Option, remain Options) {
+	opt.Kind = OptionKind(o[0])
+	switch opt.Kind {
+	case OptionKindEndList, OptionKindNop:
+		opt.Length = 1
+	default:
+		opt.Length = o[1]
+		opt.Data = o[2:opt.Length]
+	}
+	remain = o[opt.Length:]
+	return
+}
 
 type Option struct {
 	Kind   OptionKind
