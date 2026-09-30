@@ -14,6 +14,10 @@
 /* Largest frame the tools accept, big enough for a 9000 byte jumbo frame. */
 #define NU_MAX_FRAME 65536
 
+/* Ceiling on the hex text read for one frame. A frame written as hex needs a
+ * handful of characters per byte, so this only stops a runaway stream. */
+#define NU_MAX_TEXT (16 * 1024 * 1024)
+
 /*
  * Internet checksum, RFC 1071.
  *

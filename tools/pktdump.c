@@ -102,12 +102,13 @@ static uint32_t pseudo_ipv6(const uint8_t src[16], const uint8_t dst[16], uint8_
 /* What an upper layer decoder needs to know about the packet carrying it. */
 typedef struct {
   int has_pseudo;    /* the pseudo header sum below is usable */
+  int ipv6;          /* the packet is IPv6, which has stricter rules */
   uint32_t pseudo;   /* sum of the pseudo header without the length */
   int complete;      /* the buffer holds every byte the length fields claim */
   size_t claimed;    /* length the network layer announced */
 } carrier;
 
-static const carrier no_carrier = { 0, 0, 0, 0 };
+static const carrier no_carrier = { 0, 0, 0, 0, 0 };
 
 static void dump_tcp_options(const uint8_t *opt, size_t len, unsigned indent);
 static void dump_upper(uint8_t proto, const uint8_t *data, size_t len, const carrier *from,
@@ -230,7 +231,10 @@ static void dump_tcp_options(const uint8_t *opt, size_t len, unsigned indent) {
         nu_field(indent, "window scale", "malformed, %zu byte value", value_len);
       break;
     case 4:
-      nu_field(indent, "sack permitted", "kind 4");
+      if (value_len == 0)
+        nu_field(indent, "sack permitted", "kind 4");
+      else
+        nu_field(indent, "sack permitted", "malformed, %zu byte value", value_len);
       break;
     case 5:
       if (value_len % 8 == 0 && value_len > 0) {
@@ -260,10 +264,16 @@ static void dump_tcp_options(const uint8_t *opt, size_t len, unsigned indent) {
         nu_field(indent, "timestamps", "malformed, %zu byte value", value_len);
       break;
     case 9:
-      nu_field(indent, "partial order permitted", "kind 9");
+      if (value_len == 0)
+        nu_field(indent, "partial order permitted", "kind 9");
+      else
+        nu_field(indent, "partial order permitted", "malformed, %zu byte value", value_len);
       break;
     case 10:
-      nu_field(indent, "partial order profile", "kind 10");
+      if (value_len == 1)
+        nu_field(indent, "partial order profile", "start 0x%02x", value[0]);
+      else
+        nu_field(indent, "partial order profile", "malformed, %zu byte value", value_len);
       break;
     case 11:
       if (value_len == 4)
@@ -329,9 +339,12 @@ static void dump_udp(const uint8_t *data, size_t len, const carrier *from, unsig
   nu_field(indent + 1, "destination port", "%u", be16(data + 2));
   nu_field(indent + 1, "length", "%u", total);
 
-  if (checksum == 0) {
-    /* rfc0768 lets IPv4 senders skip the checksum, rfc2460 does not. */
+  if (checksum == 0 && !from->ipv6) {
+    /* rfc0768 lets an IPv4 sender skip the checksum. */
     nu_field(indent + 1, "checksum", "0x0000 (not used)");
+  } else if (checksum == 0) {
+    /* rfc2460 section 8.1 requires one over IPv6, zero is not a value. */
+    nu_field(indent + 1, "checksum", "0x0000 (invalid, IPv6 requires a checksum)");
   } else if (from->has_pseudo && from->complete && total >= 8 && total <= len) {
     uint16_t folded = nu_fold(nu_sum(data, total, from->pseudo + total));
     nu_field(indent + 1, "checksum", "0x%04x (%s)", checksum,
@@ -490,25 +503,39 @@ static void dump_ipv4(const uint8_t *data, size_t len, unsigned indent) {
 
   size_t captured = len - header_len;
   size_t claimed = total > header_len ? (size_t)total - header_len : 0;
+  int announced = claimed > 0;                   /* the header gave a length */
+  int whole = announced && captured >= claimed;  /* nothing is missing */
+  /* Bytes that belong to this packet. The rest of the buffer is ethernet
+   * padding, or a second packet, and is not the upper layer's. */
+  size_t usable = whole ? claimed : captured;
+
+  if (announced && captured > claimed)
+    nu_field(indent + 1, "trailing bytes", "%zu, padding or another packet",
+             captured - claimed);
+  if (announced && captured < claimed)
+    nu_field(indent + 1, "captured", "%zu of %zu payload bytes", captured, claimed);
 
   /* Only the first fragment carries a readable upper layer header. */
   if (offset > 0) {
     nu_field(indent + 1, "fragment", "offset %u, upper layer header is elsewhere", offset);
-    dump_payload(data + header_len, captured, claimed, indent + 1);
+    dump_payload(data + header_len, usable, claimed, indent + 1);
     return;
   }
 
-  if (claimed > captured)
-    nu_field(indent + 1, "captured", "%zu of %zu payload bytes", captured, claimed);
+  /* A first fragment holds a whole header but only part of the datagram the
+   * transport checksum covers, so it can be read and not verified. */
+  int more = (fragment & 0x2000) != 0;
+  if (more)
+    nu_field(indent + 1, "fragment", "first of several, the checksum covers them all");
 
   carrier from = {
     .has_pseudo = 1,
     .pseudo = pseudo_ipv4(data + 12, data + 16, proto, 0),
-    .complete = claimed > 0 && captured >= claimed,
-    .claimed = claimed > 0 && captured >= claimed ? claimed : captured,
+    .complete = whole && !more,
+    .claimed = usable,
   };
 
-  dump_upper(proto, data + header_len, captured, &from, indent + 1);
+  dump_upper(proto, data + header_len, usable, &from, indent + 1);
 }
 
 static void dump_ipv6(const uint8_t *data, size_t len, unsigned indent) {
@@ -555,17 +582,27 @@ static void dump_ipv6(const uint8_t *data, size_t len, unsigned indent) {
     claimed = claimed > ext_len ? claimed - ext_len : 0;
   }
 
-  if (claimed > captured)
+  /* A payload length of zero means a jumbogram, rfc2675, and then there is no
+   * announced length to clamp the buffer to. */
+  int announced = claimed > 0;
+  int whole = announced && captured >= claimed;
+  size_t usable = whole ? claimed : captured;
+
+  if (announced && captured > claimed)
+    nu_field(indent + 1, "trailing bytes", "%zu, padding or another packet",
+             captured - claimed);
+  if (announced && captured < claimed)
     nu_field(indent + 1, "captured", "%zu of %zu payload bytes", captured, claimed);
 
   carrier from = {
     .has_pseudo = 1,
+    .ipv6 = 1,
     .pseudo = pseudo_ipv6(data + 8, data + 24, next, 0),
-    .complete = claimed > 0 && captured >= claimed,
-    .claimed = claimed > 0 && captured >= claimed ? claimed : captured,
+    .complete = whole,
+    .claimed = usable,
   };
 
-  dump_upper(next, data + at, captured, &from, indent + 1);
+  dump_upper(next, data + at, usable, &from, indent + 1);
 }
 
 static void dump_icmp6(const uint8_t *data, size_t len, const carrier *from, unsigned indent) {

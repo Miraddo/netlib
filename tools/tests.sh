@@ -32,6 +32,32 @@ echo6='00 11 22 33 44 55 aa bb cc dd ee ff 81 00 20 64 86 dd 60 00 00 00 00 14
        00 00 00 00 00 00 00 00 00 02 80 00 e3 78 12 34 00 01 70 69 6e 67 20 70
        61 79 6c 6f 61 64'
 
+# A tcp syn whose sack permitted option carries a value it must not have.
+badsack='00 11 22 33 44 55 aa bb cc dd ee ff 08 00 45 00 00 2c 1c 46 40 00 40 06 9c
+         6d c0 a8 00 01 c0 a8 00 c7 04 d2 00 50 00 00 00 01 00 00 00 00 60 02 04 00
+         10 a0 00 00 04 03 00 00'
+
+# Udp over ipv6 with a zero checksum, which rfc2460 section 8.1 forbids.
+v6nocsum='00 11 22 33 44 55 aa bb cc dd ee ff 86 dd 60 00 00 00 00 0c 11 40 20 01 0d
+         b8 00 00 00 00 00 00 00 00 00 00 00 01 20 01 0d b8 00 00 00 00 00 00 00 00
+         00 00 00 02 13 88 00 35 00 0c 00 00 7a 65 72 6f'
+
+# The first fragment of a tcp datagram, MF set and the offset still zero.
+frag1='00 11 22 33 44 55 aa bb cc dd ee ff 08 00 45 00 00 40 1c 46 20 00 40 06 bc
+         59 c0 a8 00 01 c0 a8 00 c7 04 d2 00 50 00 00 00 01 00 00 00 00 50 10 04 00
+         00 00 00 00 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 10 11 12 13 14
+         15 16 17'
+
+# A short udp packet in an ethernet frame padded to the 60 byte minimum.
+padded4='00 11 22 33 44 55 aa bb cc dd ee ff 08 00 45 00 00 20 1c 46 40 00 40 11 9c
+         6e c0 a8 00 01 c0 a8 00 c7 13 88 00 35 00 0c a5 39 61 62 63 64 00 00 00 00
+         00 00 00 00 00 00 00 00 00 00'
+
+# The same trailing bytes after an ipv6 packet.
+padded6='00 11 22 33 44 55 aa bb cc dd ee ff 86 dd 60 00 00 00 00 0c 11 40 20 01 0d
+         b8 00 00 00 00 00 00 00 00 00 00 00 01 20 01 0d b8 00 00 00 00 00 00 00 00
+         00 00 00 02 13 88 00 35 00 0c cb dd 61 62 63 64 00 00 00 00 00 00'
+
 # The ipv4 header of rfc1071 section 3, with and without its checksum.
 rfc1071_zeroed='4500 0073 0000 4000 4011 0000 c0a8 0001 c0a8 00c7'
 rfc1071_full='4500 0073 0000 4000 4011 b861 c0a8 0001 c0a8 00c7'
@@ -96,6 +122,22 @@ has 'comments ignored'       '4500 0073 # total length 115
 0000 4000 4011 0000 ; identification and flags
 c0a8 0001 c0a8 00c7'                           'checksum         : 0xb861' "$checksum"
 has 'odd digit run refused'  'abc'             'not valid hex'    "$checksum"
+# 65520 bytes in "tcpdump -x" shape is over 200 thousand characters, more than
+# the three characters a byte the reader used to allow for.
+checks=$((checks + 1))
+big=$(awk 'BEGIN {
+  for (i = 0; i < 65520; i += 16) {
+    printf "0x%04x: ", i
+    for (j = 0; j < 8; j++) printf " 4500"
+    printf "\n"
+  }
+}')
+if printf '%s\n' "$big" | "$checksum" 2>&1 | grep -q 'length           : 65520 bytes'; then
+  printf 'ok    large hex input\n'
+else
+  printf 'FAIL  large hex input was not read whole\n'
+  failures=$((failures + 1))
+fi
 exits 'bad input exit status' 2 'zz'            "$checksum"
 
 printf 'ethernet and ipv4\n'
@@ -104,6 +146,10 @@ has 'ethertype'              "$syn" 'ethertype        : 0x0800 (IPv4)'     "$dum
 has 'ipv4 header checksum'   "$syn" 'checksum         : 0x9c5d (valid)'    "$dump" -q
 has 'ipv4 flags'             "$syn" 'flags            : DF'                "$dump" -q
 has 'ipv4 addresses'         "$syn" 'destination      : 192.168.0.199'     "$dump" -q
+has 'padding is not payload' "$padded4" 'trailing bytes   : 14'              "$dump" -q
+has 'payload stops at length' "$padded4" 'payload          : 4 bytes'        "$dump" -q
+has 'first fragment noted'   "$frag1" 'first of several'                     "$dump" -q
+has 'fragment not verified'  "$frag1" 'checksum         : 0x0000 (not verified)' "$dump" -q
 
 printf 'tcp\n'
 has 'tcp ports'              "$syn" 'destination port : 80'                "$dump" -q
@@ -114,6 +160,7 @@ has 'option sack permitted'  "$syn" 'sack permitted   : kind 4'            "$dum
 has 'option timestamps'      "$syn" 'timestamps       : value 287454020'   "$dump" -q
 has 'option window scale'    "$syn" 'window scale     : 7 (multiply by 128)' "$dump" -q
 has 'tcp without a carrier'  "$syn" 'not verified' "$dump" -q -l tcp
+has 'fixed option length'    "$badsack" 'sack permitted   : malformed' "$dump" -q
 
 printf 'arp\n'
 has 'arp operation'          "$arp" 'operation        : 1 (request)'       "$dump" -q
@@ -125,6 +172,8 @@ has 'vlan tag'               "$echo6" 'vlan tag         : id 100, priority 1' "$
 has 'ipv6 source'            "$echo6" 'source           : 2001:db8::1'     "$dump" -q
 has 'icmpv6 type'            "$echo6" 'type             : 128 (echo request)' "$dump" -q
 has 'icmpv6 checksum'        "$echo6" 'checksum         : 0xe378 (valid)'  "$dump" -q
+has 'ipv6 needs a checksum'  "$v6nocsum" 'invalid, IPv6 requires a checksum' "$dump" -q
+has 'ipv6 trailing bytes'    "$padded6" 'trailing bytes   : 6'               "$dump" -q
 
 printf 'malformed input\n'
 has 'short ipv4 header'      '00 11 22 33 44 55 aa bb cc dd ee ff 08 00 45 00 00' \

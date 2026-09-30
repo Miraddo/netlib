@@ -33,7 +33,10 @@ Decodes one frame and prints its headers. It knows ethernet with any number of
 802.1Q tags, ARP, IPv4 with its options and fragments, IPv6 with the extension
 headers that carry a length, TCP with the option kinds of `docs/rfc`, UDP, ICMP
 and ICMPv6. Every checksum is verified when the buffer holds the whole packet
-the length fields announce.
+the length fields announce, and only then: a first fragment, for one, carries a
+readable header but not the bytes the transport checksum covers. Bytes past the
+announced length, ethernet padding or a second packet, are counted rather than
+decoded as payload.
 
 ```sh
 $ tcpdump -c1 -x -i eth0 tcp | build/netdump -q

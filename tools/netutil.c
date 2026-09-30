@@ -163,30 +163,43 @@ ssize_t nu_read_binary(FILE *fp, uint8_t *out, size_t out_len) {
 }
 
 ssize_t nu_read_hex(FILE *fp, uint8_t *out, size_t out_len) {
-  /* Two hex digits plus a separator per byte is a safe upper bound. */
-  size_t text_len = out_len * 3 + 1;
-  char *text = malloc(text_len);
+  /* Separators, offset labels and comments all make the text longer than the
+   * bytes it carries, by a factor no format fixes, so the buffer grows with
+   * the stream instead of being sized from out_len. The ceiling only stops a
+   * runaway input, it is far above any frame written as hex. */
+  size_t cap = 8192, total = 0;
+  char *text = malloc(cap);
   if (!text)
     return -1;
 
-  size_t total = 0;
-  while (total < text_len) {
-    size_t n = fread(text + total, 1, text_len - total, fp);
-    total += n;
-    if (n == 0)
+  for (;;) {
+    total += fread(text + total, 1, cap - total, fp);
+    if (ferror(fp) || total < cap)
       break;
+
+    /* The buffer is full. Only grow it if a byte really does follow. */
+    int next = getc(fp);
+    if (next == EOF)
+      break;
+
+    if (cap >= NU_MAX_TEXT) {
+      free(text);
+      errno = ENOSPC;
+      return -1;
+    }
+
+    size_t bigger = cap * 2 > NU_MAX_TEXT ? NU_MAX_TEXT : cap * 2;
+    char *grown = realloc(text, bigger);
+    if (!grown) {
+      free(text);
+      return -1;
+    }
+    text = grown;
+    cap = bigger;
+    text[total++] = (char)next;
   }
 
-  ssize_t parsed;
-  if (ferror(fp)) {
-    parsed = -1;
-  } else if (total == text_len && getc(fp) != EOF) {
-    /* More text than a full buffer of bytes could ever need. */
-    errno = ENOSPC;
-    parsed = -1;
-  } else {
-    parsed = nu_parse_hex(text, total, out, out_len);
-  }
+  ssize_t parsed = ferror(fp) ? -1 : nu_parse_hex(text, total, out, out_len);
 
   int saved = errno;
   free(text);
